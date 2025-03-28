@@ -10,6 +10,7 @@ from PyQt6.QtCore import Qt
 from PyQt6.QtGui import QPixmap, QImage
 from PyQt6.QtWidgets import QWidget, QLabel, QMessageBox, QVBoxLayout, QSizePolicy
 from components.contour_widget import ContourWidget
+from components.grey_value_list import GreyValueList
 
 
 class ImageManager(QWidget):
@@ -31,6 +32,9 @@ class ImageManager(QWidget):
 
         # 记录绘制contours obj
         self.contour_objs: dict[tuple[int, int], ContourWidget] = dict()
+
+        # 记录灰度值列表 obj
+        self.grey_value_list_objs: dict[int, GreyValueList] = dict()
 
         self.scale_factor = 1.0
         self.offset = (0, 0)
@@ -106,7 +110,7 @@ class ImageManager(QWidget):
     def update(self):
         self._calculate_scale_offset()
         # Clear old contours
-        for contour in self.contour_objs:
+        for _, contour in self.contour_objs.items():
             contour.deleteLater()
         self.contour_objs.clear()
         # Create new contour objects
@@ -147,6 +151,16 @@ class ImageManager(QWidget):
         group_idx, idx = contour_tag
         self.results[group_idx][idx] = None # Mark as deleted
         self.contour_objs.pop(contour_tag)
+
+    def update_grey_value_list(self):
+        for group_idx, group in enumerate(self.results):
+            if group_idx not in self.grey_value_list_objs:
+                grey_value_list = GreyValueList(self)
+                self.grey_value_list_objs[group_idx] = grey_value_list
+            else:
+                grey_value_list = self.grey_value_list_objs[group_idx]
+            grey_value_list.update_values(group)
+            grey_value_list.show()
 
     def _resize_image_label(self):
         if self.original_image is None:
