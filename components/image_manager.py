@@ -80,14 +80,33 @@ class ImageManager(QWidget):
         rects = []
         for contour in contours:
             x, y, w, h = cv2.boundingRect(contour)
-            # roi = self.gray[y:y+h, x:x+w]
             roi = self.inverted_gray[y:y+h, x:x+w]
-            gray_integral = np.sum(roi)
+
+            # Apply threshold to eliminate white areas more strictly
+            _, roi_thresh = cv2.threshold(roi, self._estimate_background_threshold(),
+                                          255, cv2.THRESH_BINARY_INV)  # Lower threshold to eliminate more white areas
+            gray_integral = np.sum(roi_thresh)  # Calculate integral on thresholded ROI
+
             rects.append((x, y, w, h, gray_integral))
 
         self.results = self.group_contours(rects)
         self.update()
         self._resize_image_label()
+
+    def _estimate_background_threshold(self):
+        # 计算图像的直方图
+        histogram = cv2.calcHist([self.gray], [0], None, [256], [0, 256])
+        histogram = histogram.ravel()  # 将直方图转换为一维数组
+
+        # 找到直方图中最大值的索引
+        max_index = np.argmax(histogram)
+        # 选择最大值索引前10%的灰度值作为阈值
+        threshold = max_index - int(0.1 * len(histogram))
+
+        # 确保阈值在有效范围内
+        threshold = max(0, min(threshold, 255))
+
+        return threshold
 
     def group_contours(self, rects):
         sorted_rects = sorted(rects, key=lambda r: (r[0], r[1]))  # Sort by x, then y
@@ -104,6 +123,8 @@ class ImageManager(QWidget):
                     groups.append(current_group)
                     current_group = [rect]
         if current_group:
+            # sort by y coordinate
+            current_group = sorted(current_group, key=lambda r: r[1])
             groups.append(current_group)
         return groups
 
@@ -127,6 +148,7 @@ class ImageManager(QWidget):
                 contour.position = (win_x, win_y)
                 self.contour_objs[contour_tag] = contour
                 contour.show()
+        self.init_grey_value_list()
     
     def contour_changed(self, contour_tag):
         contour = self.contour_objs.get(contour_tag)
@@ -137,8 +159,11 @@ class ImageManager(QWidget):
         roi = self.inverted_gray[y:y+h, x:x+w]
         gray_integral = np.sum(roi)
         old_gray_integral = self.results[contour_tag[0]][contour_tag[1]][4]
-        print(f"old integral: {old_gray_integral} -> new integral: {gray_integral}")
+        print(f"{contour_tag} old integral: {old_gray_integral} -> new integral: {gray_integral}")
         self.results[contour_tag[0]][contour_tag[1]] = (x, y, w, h, gray_integral)
+        grey_value_list = self.grey_value_list_objs.get(contour_tag[0])
+        if grey_value_list:
+            grey_value_list.update_data_for_contour_idx(contour_tag[1], gray_integral)
 
     def contour_add(self, group_idx):
         pass
@@ -149,18 +174,21 @@ class ImageManager(QWidget):
             return
         contour.deleteLater()
         group_idx, idx = contour_tag
-        self.results[group_idx][idx] = None # Mark as deleted
+        self.results[group_idx][idx] = None     # Mark as deleted
         self.contour_objs.pop(contour_tag)
 
-    def update_grey_value_list(self):
+    def init_grey_value_list(self):
+        # 清空旧的灰度值列表
+        for group_idx in list(self.grey_value_list_objs.keys()):
+            self.grey_value_list_objs[group_idx].deleteLater()
+            del self.grey_value_list_objs[group_idx]
+
+        # 创建新的灰度值列表
         for group_idx, group in enumerate(self.results):
-            if group_idx not in self.grey_value_list_objs:
-                grey_value_list = GreyValueList(self)
-                self.grey_value_list_objs[group_idx] = grey_value_list
-            else:
-                grey_value_list = self.grey_value_list_objs[group_idx]
+            grey_value_list = GreyValueList(self)
             grey_value_list.update_values(group)
             grey_value_list.show()
+            self.grey_value_list_objs[group_idx] = grey_value_list
 
     def _resize_image_label(self):
         if self.original_image is None:
@@ -178,6 +206,26 @@ class ImageManager(QWidget):
         self.image_label.move((main_window_width - scaled_width) // 2, 
                               (main_window_height - scaled_height) // 2)
         # print(f"image_label size: {self.image_label.width()} x {self.image_label.height()}")
+
+        for group_idx, group in enumerate(self.results):
+            grey_value_list = self.grey_value_list_objs.get(group_idx)
+            if not grey_value_list:
+                continue
+            # 将灰度值列表放置在相应轮廓对象的正下方
+            if group:
+                # 获取位置最下方的轮廓对象
+                lower_position = None
+                lower_contour = None
+                for contour_idx in range(len(group)):
+                    contour_tag = (group_idx, contour_idx)
+                    contour = self.contour_objs.get(contour_tag)
+                    if not contour:
+                        continue
+                    if lower_position is None or contour.position.y() > lower_position[1]:
+                        lower_position = (contour.position.x(), contour.position.y())
+                        lower_contour = contour
+                if lower_position:
+                    grey_value_list.move(lower_position[0], lower_position[1] + lower_contour.rect.height())
 
     def _calculate_scale_offset(self):
         if self.original_image is None:
