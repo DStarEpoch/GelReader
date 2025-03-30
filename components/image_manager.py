@@ -18,7 +18,6 @@ class ImageManager(QWidget):
         super().__init__(parent=parent)
         self.original_image = None
         self.gray = None
-        self.inverted_gray = None
         self.results = []
         self.image_label = QLabel(self)
         self.image_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
@@ -35,6 +34,7 @@ class ImageManager(QWidget):
 
         # 记录灰度值列表 obj
         self.grey_value_list_objs: dict[int, GreyValueList] = dict()
+        self._background_threshold = 0
 
         self.scale_factor = 1.0
         self.offset = (0, 0)
@@ -47,14 +47,15 @@ class ImageManager(QWidget):
             QMessageBox.warning(self, "Error", "Failed to load image. Please check the file path.")
             return
         self.gray = cv2.cvtColor(self.original_image, cv2.COLOR_BGR2GRAY)
+        self._background_threshold = self._estimate_background_threshold()
         h, w, ch = self.original_image.shape
         if ch != 3:
             QMessageBox.warning(self, "Error", "Unsupported image format. Only RGB images are supported.")
             self.original_image = None
             self.gray = None
-            self.inverted_gray = None
             return
-        print(f"Image loaded successfully. Shape: {self.original_image.shape}")
+        print(f"Image loaded successfully. Shape: {self.original_image.shape}, "
+              f"background threshold: {self._background_threshold}")
         self._resize_image_label()
         q_img = QImage(self.original_image.data, w, h, ch * w, QImage.Format.Format_BGR888)
         pixmap = QPixmap.fromImage(q_img).scaled(
@@ -76,14 +77,13 @@ class ImageManager(QWidget):
         opening = cv2.morphologyEx(thresh, cv2.MORPH_OPEN, kernel, iterations=2)
         contours, _ = cv2.findContours(opening, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
 
-        self.inverted_gray = cv2.bitwise_not(self.gray)
         rects = []
         for contour in contours:
             x, y, w, h = cv2.boundingRect(contour)
-            roi = self.inverted_gray[y:y+h, x:x+w]
+            roi = self.gray[y:y+h, x:x+w]
 
             # Apply threshold to eliminate white areas more strictly
-            _, roi_thresh = cv2.threshold(roi, self._estimate_background_threshold(),
+            _, roi_thresh = cv2.threshold(roi, self._background_threshold,
                                           255, cv2.THRESH_BINARY_INV)  # Lower threshold to eliminate more white areas
             gray_integral = np.sum(roi_thresh)  # Calculate integral on thresholded ROI
 
@@ -123,9 +123,9 @@ class ImageManager(QWidget):
                     groups.append(current_group)
                     current_group = [rect]
         if current_group:
-            # sort by y coordinate
-            current_group = sorted(current_group, key=lambda r: r[1])
             groups.append(current_group)
+        for group_idx, group in enumerate(groups):
+            groups[group_idx] = sorted(group, key=lambda r: r[1])
         return groups
 
     def update(self):
@@ -156,8 +156,10 @@ class ImageManager(QWidget):
             return
         x, y = self.window_to_image_coord(contour.x(), contour.y())
         w, h = int(contour.rect.width() / self.scale_factor), int(contour.rect.height() / self.scale_factor)
-        roi = self.inverted_gray[y:y+h, x:x+w]
-        gray_integral = np.sum(roi)
+        roi = self.gray[y:y+h, x:x+w]
+        _, roi_thresh = cv2.threshold(roi, self._background_threshold,
+                                      255, cv2.THRESH_BINARY_INV)  # Lower threshold to eliminate more white areas
+        gray_integral = np.sum(roi_thresh)
         old_gray_integral = self.results[contour_tag[0]][contour_tag[1]][4]
         print(f"{contour_tag} old integral: {old_gray_integral} -> new integral: {gray_integral}")
         self.results[contour_tag[0]][contour_tag[1]] = (x, y, w, h, gray_integral)
