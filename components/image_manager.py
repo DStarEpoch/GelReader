@@ -110,20 +110,24 @@ class ImageManager(QWidget):
 
     def group_contours(self, rects):
         sorted_rects = sorted(rects, key=lambda r: (r[0], r[1]))  # Sort by x, then y
-        groups = []
-        current_group = []
+
+        def is_same_group(group_rects, find_rect):
+            for rc in group_rects:
+                if max(rc[0] + rc[2], find_rect[0] + find_rect[2]) - min(rc[0], find_rect[0]) < rc[2] + find_rect[2]:
+                    return True
+            return False
+
+        groups: list[list] = []
         for rect in sorted_rects:
-            if not current_group:
-                current_group.append(rect)
+            if not groups:
+                groups.append([rect, ])
             else:
-                last_x, last_w = current_group[-1][0], current_group[-1][2]
-                if rect[0] < (last_x + last_w):  # Overlapping width
-                    current_group.append(rect)
+                for group in groups:
+                    if is_same_group(group, rect):
+                        group.append(rect)
+                        break
                 else:
-                    groups.append(current_group)
-                    current_group = [rect]
-        if current_group:
-            groups.append(current_group)
+                    groups.append([rect, ])
         for group_idx, group in enumerate(groups):
             groups[group_idx] = sorted(group, key=lambda r: r[1])
         return groups
@@ -178,6 +182,7 @@ class ImageManager(QWidget):
         group_idx, idx = contour_tag
         self.results[group_idx][idx] = None     # Mark as deleted
         self.contour_objs.pop(contour_tag)
+        self._refresh_grey_value_list()
 
     def init_grey_value_list(self):
         # 清空旧的灰度值列表
@@ -187,10 +192,30 @@ class ImageManager(QWidget):
 
         # 创建新的灰度值列表
         for group_idx, group in enumerate(self.results):
-            grey_value_list = GreyValueList(self)
+            grey_value_list = GreyValueList(group_idx, self, delete_cb=self.contour_delete)
             grey_value_list.update_values(group)
             grey_value_list.show()
             self.grey_value_list_objs[group_idx] = grey_value_list
+
+    def _refresh_grey_value_list(self):
+        for group_idx, group in enumerate(self.results):
+            grey_value_list = self.grey_value_list_objs.get(group_idx)
+            if not grey_value_list:
+                continue
+            # 将灰度值列表放置在相应轮廓对象的正下方
+            if group:
+                # 获取轮廓左侧坐标
+                lower_x = None
+                for contour_idx in range(len(group)):
+                    contour_tag = (group_idx, contour_idx)
+                    contour = self.contour_objs.get(contour_tag)
+                    if not contour:
+                        continue
+                    if lower_x is None or contour.position.x() < lower_x:
+                        lower_x = contour.position.x()
+                if lower_x is not None:
+                    grey_value_list.move(lower_x,
+                                         self.offset[1] + int(self.original_image.shape[0] * self.scale_factor))
 
     def _resize_image_label(self):
         if self.original_image is None:
@@ -208,26 +233,7 @@ class ImageManager(QWidget):
         self.image_label.move((main_window_width - scaled_width) // 2, 
                               (main_window_height - scaled_height) // 2)
         # print(f"image_label size: {self.image_label.width()} x {self.image_label.height()}")
-
-        for group_idx, group in enumerate(self.results):
-            grey_value_list = self.grey_value_list_objs.get(group_idx)
-            if not grey_value_list:
-                continue
-            # 将灰度值列表放置在相应轮廓对象的正下方
-            if group:
-                # 获取位置最下方的轮廓对象
-                lower_position = None
-                lower_contour = None
-                for contour_idx in range(len(group)):
-                    contour_tag = (group_idx, contour_idx)
-                    contour = self.contour_objs.get(contour_tag)
-                    if not contour:
-                        continue
-                    if lower_position is None or contour.position.y() > lower_position[1]:
-                        lower_position = (contour.position.x(), contour.position.y())
-                        lower_contour = contour
-                if lower_position:
-                    grey_value_list.move(lower_position[0], lower_position[1] + lower_contour.rect.height())
+        self._refresh_grey_value_list()
 
     def _calculate_scale_offset(self):
         if self.original_image is None:
