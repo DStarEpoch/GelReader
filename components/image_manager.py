@@ -14,11 +14,13 @@ from components.grey_value_list import GreyValueList
 
 
 class ImageManager(QWidget):
-    def __init__(self, parent=None):
+    def __init__(self, parent=None, contour_changed_cb=None):
         super().__init__(parent=parent)
-        self.original_image = None
         self.gray = None
+        self.original_image = None
+        self.contour_changed_cb = contour_changed_cb
         self.results = []
+        self.image_position_ratio = 0.2
         self.image_label = QLabel(self)
         self.image_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.image_label.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Fixed)
@@ -133,6 +135,7 @@ class ImageManager(QWidget):
         return groups
 
     def update(self):
+        self.update_position()
         self._calculate_scale_offset()
         # Clear old contours
         for _, contour in self.contour_objs.items():
@@ -144,7 +147,8 @@ class ImageManager(QWidget):
                 if child is None:
                     continue
                 contour_tag = (group_idx, idx)
-                contour = ContourWidget(self, contour_tag=contour_tag, changed_cb=self.contour_changed)
+                contour = ContourWidget(self, contour_tag=contour_tag,
+                                        changed_cb=self.contour_changed)
                 contour.set_rect(child[2] * self.scale_factor, child[3] * self.scale_factor)
                 contour.color = idx
                 # Correctly position the contour using image to window conversion
@@ -164,35 +168,66 @@ class ImageManager(QWidget):
         _, roi_thresh = cv2.threshold(roi, self._background_threshold,
                                       255, cv2.THRESH_BINARY_INV)  # Lower threshold to eliminate more white areas
         gray_integral = np.sum(roi_thresh)
-        old_gray_integral = self.results[contour_tag[0]][contour_tag[1]][4]
-        print(f"{contour_tag} old integral: {old_gray_integral} -> new integral: {gray_integral}")
+        # old_gray_integral = self.results[contour_tag[0]][contour_tag[1]][4]
         self.results[contour_tag[0]][contour_tag[1]] = (x, y, w, h, gray_integral)
         grey_value_list = self.grey_value_list_objs.get(contour_tag[0])
         if grey_value_list:
             grey_value_list.update_data_for_contour_idx(contour_tag[1], gray_integral)
 
     def contour_add(self, group_idx):
-        pass
+        group_contours = self.results[group_idx]
+        left_x = None
+        right_x = None
+        upper_y = None
+        height = 10
+        for contour in group_contours:
+            if contour is None:
+                continue
+            x, y, w, h, _ = contour
+            if left_x is None or x < left_x:
+                left_x = x
+            if right_x is None or x + w > right_x:
+                right_x = x + w
+            if upper_y is None or y + h > upper_y:
+                upper_y = y + h
+        self.results[group_idx].append((left_x, int(upper_y + height / 2), right_x - left_x, height, 0))
+        self.update()
+        self._resize_image_label()
+        new_contour_tag = (group_idx, len(self.results[group_idx]) - 1)
+        self.contour_changed(new_contour_tag)
+        self.contour_changed_cb and self.contour_changed_cb(self.results)
 
     def contour_delete(self, contour_tag):
         contour = self.contour_objs.get(contour_tag)
         if not contour:
             return
+        self.contour_objs.pop(contour_tag)
         contour.deleteLater()
         group_idx, idx = contour_tag
         self.results[group_idx][idx] = None     # Mark as deleted
-        self.contour_objs.pop(contour_tag)
+        for group_info in self.results[group_idx]:
+            if group_info is not None:
+                break
+        else:
+            self.results[group_idx] = []  # Remove empty group
+            grey_value_list = self.grey_value_list_objs.get(group_idx)
+            if grey_value_list:
+                grey_value_list.deleteLater()
+                self.grey_value_list_objs.pop(group_idx)
         self._refresh_grey_value_list()
+        self.contour_changed_cb and self.contour_changed_cb(self.results)
 
     def init_grey_value_list(self):
         # 清空旧的灰度值列表
         for group_idx in list(self.grey_value_list_objs.keys()):
             self.grey_value_list_objs[group_idx].deleteLater()
-            del self.grey_value_list_objs[group_idx]
+        self.grey_value_list_objs.clear()
 
         # 创建新的灰度值列表
         for group_idx, group in enumerate(self.results):
-            grey_value_list = GreyValueList(group_idx, self, delete_cb=self.contour_delete)
+            if not group:
+                continue
+            grey_value_list = GreyValueList(group_idx, self, delete_cb=self.contour_delete, add_cb=self.contour_add)
             grey_value_list.update_values(group)
             grey_value_list.show()
             self.grey_value_list_objs[group_idx] = grey_value_list
@@ -230,10 +265,17 @@ class ImageManager(QWidget):
         scaled_width = int(w * self.scale_factor)
         scaled_height = int(h * self.scale_factor)
         self.image_label.resize(scaled_width, scaled_height)
-        self.image_label.move((main_window_width - scaled_width) // 2, 
-                              (main_window_height - scaled_height) // 2)
-        # print(f"image_label size: {self.image_label.width()} x {self.image_label.height()}")
+        self.update_position()
         self._refresh_grey_value_list()
+    
+    def update_position(self):
+        """根据比例值调整图片的位置"""
+        if self.original_image is None:
+            return
+        main_window_height = self.parent().height()
+        scaled_height = int(self.original_image.shape[0] * self.scale_factor)
+        offset_y = int((main_window_height - scaled_height) * self.image_position_ratio)
+        self.image_label.move((self.parent().width() - self.image_label.width()) // 2, offset_y)
 
     def _calculate_scale_offset(self):
         if self.original_image is None:

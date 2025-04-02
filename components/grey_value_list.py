@@ -11,12 +11,17 @@ from PyQt6.QtWidgets import QWidget, QLabel, QPushButton
 
 
 class GreyValueList(QWidget):
-    def __init__(self, group_idx: int, parent=None, delete_cb=None):
+    def __init__(self, group_idx: int, parent=None, delete_cb=None, add_cb=None):
         super().__init__(parent=parent)
         self.labels = []  # 用于存储所有 QLabel，便于后续更新
         self.buttons = []  # 用于存储所有 QPushButton，便于后续更新
         self.delete_cb = delete_cb
+        self.add_cb = add_cb
         self.group_idx = group_idx
+        self.add_button = QPushButton(self)
+        self.add_button.setIcon(QIcon('assets/add.ico'))
+        self.add_button.clicked.connect(self.on_add)
+        self.add_button.resize(17, 17)
 
     def update_values(self, group_result):
         # 清空旧的 QLabel
@@ -38,7 +43,7 @@ class GreyValueList(QWidget):
             label.setStyleSheet(f"color: rgb({color.red()}, {color.green()}, {color.blue()});")
             self.labels.append(label)
             button = QPushButton(self)
-            button.setIcon(QIcon('assets/delete.png'))
+            button.setIcon(QIcon('assets/delete.ico'))
             button.clicked.connect(partial(self.on_delete, idx))
             self.buttons.append(button)
         self.refresh_labels_and_buttons()
@@ -54,6 +59,8 @@ class GreyValueList(QWidget):
             button.resize(15, 15)  # 设置按钮大小
             button.move(0, y_offset)  # 设置按钮位置
             y_offset += y_steps
+        self.add_button.move(10, y_offset)
+        y_offset += y_steps
         self.resize(self.width(), y_offset)
 
     def update_data_for_contour_idx(self, idx, value):
@@ -74,3 +81,18 @@ class GreyValueList(QWidget):
             self.buttons[label_idx].deleteLater()
             self.buttons[label_idx] = None
         self.refresh_labels_and_buttons()
+
+    def on_add(self):
+        if self.add_cb:
+            self.add_cb(self.group_idx)
+        # last_idx = len(self.labels)
+        # rgba = CONTOUR_COLOR_LIST[last_idx % len(CONTOUR_COLOR_LIST)]
+        # color = QColor(rgba[0], rgba[1], rgba[2], rgba[3])
+        # label = QLabel("0", self)
+        # label.setStyleSheet(f"color: rgb({color.red()}, {color.green()}, {color.blue()});")
+        # self.labels.append(label)
+        # button = QPushButton(self)
+        # button.setIcon(QIcon('assets/delete.png'))
+        # button.clicked.connect(partial(self.on_delete, last_idx))
+        # self.buttons.append(button)
+        # self.refresh_labels_and_buttons()

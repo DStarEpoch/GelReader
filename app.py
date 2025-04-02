@@ -16,8 +16,8 @@ from components.color_name_manager import ColorNameManager
 class Application(QMainWindow):
     def __init__(self):
         super(Application, self).__init__()
-        self.image_mgr = ImageManager(self)
-        # self.color_mgr = ColorNameManager(self)
+        self.image_mgr = ImageManager(self, contour_changed_cb=self.on_contour_changed)
+        self.color_mgr = ColorNameManager(self)
         self._init_ui()
 
     def _init_ui(self):
@@ -41,12 +41,15 @@ class Application(QMainWindow):
         tb.addAction(analyze_act)
 
         # add components
-        top_panel = QWidget()
-        top_layout = QVBoxLayout()
-        # top_layout.addWidget(self.color_mgr)
-        top_layout.addWidget(self.image_mgr)
-        top_panel.setLayout(top_layout)
-        self.setCentralWidget(top_panel)
+        main_widget = QWidget()
+        main_layout = QVBoxLayout()
+        
+        # 添加顶部颜色管理器
+        main_layout.addWidget(self.color_mgr)
+        # 添加图像管理器
+        main_layout.addWidget(self.image_mgr)
+        main_widget.setLayout(main_layout)
+        self.setCentralWidget(main_widget)
 
     def resizeEvent(self, event):
         super().resizeEvent(event)
@@ -60,10 +63,13 @@ class Application(QMainWindow):
     def analyze_image(self):
         if self.image_mgr.original_image is None:
             # popup
-            QMessageBox.warning(self, "Warning", "Please open an image first.")
+            QMessageBox.warning(self, "Warning", "Please load an image first.")
             return
         self.image_mgr.analyze()
-        # self.color_mgr.update_colors(self.image_mgr.results)
+        self.color_mgr.update_color_names(self.image_mgr.results)
+
+    def on_contour_changed(self, results):
+        self.color_mgr.update_color_names(results)
 
     def export_to_csv(self):
         if not self.image_mgr.results:
@@ -71,13 +77,14 @@ class Application(QMainWindow):
             return
         path, _ = QFileDialog.getSaveFileName(self, "Save CSV", "", "CSV Files (*.csv)")
         if path:
-            max_contour_idx = max([len(self.image_mgr.results[group_idx]) for group_idx in
-                                   range(len(self.image_mgr.results))])
+            color_name_dict = self.color_mgr.color_names
             with open(path, 'w', newline='') as csvfile:
-                fieldnames = ['Group', ] + [f'Contour_{i}' for i in range(max_contour_idx)]
+                fieldnames = ['Group', ] + [color_name for _, color_name in color_name_dict.items()]
                 writer = csv.DictWriter(csvfile, fieldnames=fieldnames)
                 writer.writeheader()
                 for group_idx in range(len(self.image_mgr.results)):
+                    if not self.image_mgr.results[group_idx]:
+                        continue
                     group_data = {
                         'Group': group_idx
                     }
@@ -87,9 +94,25 @@ class Application(QMainWindow):
                             gray_data = None
                         else:
                             gray_data = res[-1]
-                        group_data[f'Contour_{contour_idx}'] = gray_data
+                        group_data[color_name_dict[contour_idx]] = gray_data
                     writer.writerow(group_data)
+            QMessageBox.information(self, "Success", "Data exported successfully.")
 
+    def export_config(self):
+        if not self.color_mgr.color_names:
+            QMessageBox.warning(self, "Warning", "No config data to export.")
+            return
+        self.color_mgr.export_color_name_config()
+
+    def load_config(self):
+        path, _ = QFileDialog.getOpenFileName(self, "Load Contour Color Name Config", "", "Yaml Files (*.yaml, *.yml)")
+        if path:
+            with open(path, 'r') as file:
+                color_name_dict = {}
+                for line in file:
+                    idx, name = line.strip().split(':')
+                    color_name_dict[int(idx)] = name.strip()
+                self.color_mgr.load_color_name_config(color_name_dict)
 
 
 def main():
