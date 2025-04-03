@@ -10,6 +10,7 @@ import yaml
 from PyQt6.QtWidgets import QMainWindow, QWidget, QVBoxLayout, \
     QFileDialog, QMessageBox, QApplication
 from PyQt6.QtGui import QAction, QIcon
+from share.resource import resource_path
 from components.image_manager import ImageManager
 from components.color_name_manager import ColorNameManager
 
@@ -28,25 +29,25 @@ class Application(QMainWindow):
         # menu bar
         menubar = self.menuBar()
         file_menu = menubar.addMenu("File")
-        img_load = QAction(QIcon('assets/import.png'), "Load Image", self)
+        img_load = QAction(QIcon(resource_path('assets/import.png')), "Load Image", self)
         img_load.triggered.connect(self.load_image)
         file_menu.addAction(img_load)
-        data_export = QAction(QIcon('assets/export.png'), "Export Data", self)
+        data_export = QAction(QIcon(resource_path('assets/export.png')), "Export Data", self)
         data_export.triggered.connect(self.export_to_csv)
         file_menu.addAction(data_export)
 
         # config menu
         config_menu = menubar.addMenu("Config")
-        config_load = QAction(QIcon('assets/import.png'), "Load Config", self)
+        config_load = QAction(QIcon(resource_path('assets/import.png')), "Load Config", self)
         config_load.triggered.connect(self.load_config)
         config_menu.addAction(config_load)
-        config_export = QAction(QIcon('assets/export.png'), "Export Config", self)
+        config_export = QAction(QIcon(resource_path('assets/export.png')), "Export Config", self)
         config_export.triggered.connect(self.export_config)
         config_menu.addAction(config_export)
 
         # tools bar
         tb = self.addToolBar("Tools")
-        analyze_act = QAction(QIcon('assets/analyze.png'), 'analyze', self)
+        analyze_act = QAction(QIcon(resource_path('assets/analyze.png')), 'analyze', self)
         analyze_act.triggered.connect(self.analyze_image)
         tb.addAction(analyze_act)
 

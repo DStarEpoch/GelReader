@@ -4,6 +4,7 @@
 # @Author : yuyeqing
 # @File   : group_name_widget.py
 # @IDE    : PyCharm
+from share.resource import resource_path
 from PyQt6.QtGui import QColor, QIcon
 from PyQt6.QtWidgets import QWidget, QPushButton, QInputDialog
 
@@ -30,7 +31,7 @@ class GroupNameWidget(QWidget):
 
     def _init_ui(self):
         self.delete_button = QPushButton(self)
-        self.delete_button.setIcon(QIcon('assets/delete.ico'))
+        self.delete_button.setIcon(QIcon(resource_path('assets/delete.ico')))
         self.delete_button.clicked.connect(self.delete_group)
         self.delete_button.resize(15, 15)
 

@@ -4,6 +4,7 @@
 # @Author : yuyeqing
 # @File   : grey_value_list.py
 # @IDE    : PyCharm
+from share.resource import resource_path
 from functools import partial
 from share.consts import CONTOUR_COLOR_LIST
 from PyQt6.QtGui import QColor, QIcon
@@ -19,7 +20,7 @@ class GreyValueList(QWidget):
         self.add_cb = add_cb
         self.group_idx = group_idx
         self.add_button = QPushButton(self)
-        self.add_button.setIcon(QIcon('assets/add.ico'))
+        self.add_button.setIcon(QIcon(resource_path('assets/add.ico')))
         self.add_button.clicked.connect(self.on_add)
         self.add_button.resize(17, 17)
 
@@ -43,7 +44,7 @@ class GreyValueList(QWidget):
             label.setStyleSheet(f"color: rgb({color.red()}, {color.green()}, {color.blue()});")
             self.labels.append(label)
             button = QPushButton(self)
-            button.setIcon(QIcon('assets/delete.ico'))
+            button.setIcon(QIcon(resource_path('assets/delete.ico')))
             button.clicked.connect(partial(self.on_delete, idx))
             self.buttons.append(button)
         self.refresh_labels_and_buttons()

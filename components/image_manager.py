@@ -4,8 +4,6 @@
 # @Author : yuyeqing
 # @File   : image_manager.py
 # @IDE    : PyCharm
-from functools import partial
-
 import cv2
 import numpy as np
 from PyQt6.QtCore import Qt
