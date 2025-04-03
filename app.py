@@ -6,6 +6,7 @@
 # @IDE    : PyCharm
 import sys
 import csv
+import yaml
 from PyQt6.QtWidgets import QMainWindow, QWidget, QVBoxLayout, \
     QFileDialog, QMessageBox, QApplication
 from PyQt6.QtGui import QAction, QIcon
@@ -33,6 +34,15 @@ class Application(QMainWindow):
         data_export = QAction(QIcon('assets/export.png'), "Export Data", self)
         data_export.triggered.connect(self.export_to_csv)
         file_menu.addAction(data_export)
+
+        # config menu
+        config_menu = menubar.addMenu("Config")
+        config_load = QAction(QIcon('assets/import.png'), "Load Config", self)
+        config_load.triggered.connect(self.load_config)
+        config_menu.addAction(config_load)
+        config_export = QAction(QIcon('assets/export.png'), "Export Config", self)
+        config_export.triggered.connect(self.export_config)
+        config_menu.addAction(config_export)
 
         # tools bar
         tb = self.addToolBar("Tools")
@@ -75,44 +85,56 @@ class Application(QMainWindow):
         if not self.image_mgr.results:
             QMessageBox.warning(self, "Warning", "No analyzed data to export.")
             return
-        path, _ = QFileDialog.getSaveFileName(self, "Save CSV", "", "CSV Files (*.csv)")
-        if path:
-            color_name_dict = self.color_mgr.color_names
-            with open(path, 'w', newline='') as csvfile:
-                fieldnames = ['Group', ] + [color_name for _, color_name in color_name_dict.items()]
-                writer = csv.DictWriter(csvfile, fieldnames=fieldnames)
-                writer.writeheader()
-                for group_idx in range(len(self.image_mgr.results)):
-                    if not self.image_mgr.results[group_idx]:
-                        continue
-                    group_data = {
-                        'Group': group_idx
-                    }
-                    for contour_idx in range(len(self.image_mgr.results[group_idx])):
-                        res = self.image_mgr.results[group_idx][contour_idx]
-                        if res is None:
-                            gray_data = None
-                        else:
-                            gray_data = res[-1]
-                        group_data[color_name_dict[contour_idx]] = gray_data
-                    writer.writerow(group_data)
-            QMessageBox.information(self, "Success", "Data exported successfully.")
+        try:
+            path, _ = QFileDialog.getSaveFileName(self, "Save CSV", "", "CSV Files (*.csv)")
+            if path:
+                color_name_dict = self.color_mgr.color_names
+                with open(path, 'w', newline='') as csvfile:
+                    fieldnames = ['Group', ] + [color_name for _, color_name in color_name_dict.items()]
+                    writer = csv.DictWriter(csvfile, fieldnames=fieldnames)
+                    writer.writeheader()
+                    for group_idx in range(len(self.image_mgr.results)):
+                        if not self.image_mgr.results[group_idx]:
+                            continue
+                        group_data = {
+                            'Group': self.image_mgr.group_names.get(group_idx, f"Group{group_idx}"),
+                        }
+                        for contour_idx in range(len(self.image_mgr.results[group_idx])):
+                            res = self.image_mgr.results[group_idx][contour_idx]
+                            if res is None:
+                                gray_data = None
+                            else:
+                                gray_data = res[-1]
+                            group_data[color_name_dict[contour_idx]] = gray_data
+                        writer.writerow(group_data)
+                QMessageBox.information(self, "Success", "Data exported successfully.")
+        except Exception as e:
+            QMessageBox.critical(self, "Error", f"Failed to export data: {e}")
 
     def export_config(self):
         if not self.color_mgr.color_names:
             QMessageBox.warning(self, "Warning", "No config data to export.")
             return
-        self.color_mgr.export_color_name_config()
+        config = self.color_mgr.export_color_name_config()
+        try:
+            path, _ = QFileDialog.getSaveFileName(self, "Save Config", "", "Yaml Files (*.yaml)")
+            if path:
+                with open(path, 'w') as f:
+                    yaml.dump(config, f)
+                QMessageBox.information(self, "Success", "Config exported successfully.")
+        except Exception as e:
+            QMessageBox.critical(self, "Error", f"Failed to export config: {e}")
 
     def load_config(self):
-        path, _ = QFileDialog.getOpenFileName(self, "Load Contour Color Name Config", "", "Yaml Files (*.yaml, *.yml)")
+        path, _ = QFileDialog.getOpenFileName(self, "Load Contour Color Name Config", "", "Yaml Files (*.yaml *.yml)")
         if path:
-            with open(path, 'r') as file:
-                color_name_dict = {}
-                for line in file:
-                    idx, name = line.strip().split(':')
-                    color_name_dict[int(idx)] = name.strip()
-                self.color_mgr.load_color_name_config(color_name_dict)
+            try:
+                with open(path, 'r') as f:
+                    config = yaml.load(f, Loader=yaml.FullLoader)
+                self.color_mgr.load_color_name_config(config)
+                QMessageBox.information(self, "Success", "Config loaded successfully.")
+            except Exception as e:
+                QMessageBox.critical(self, "Error", f"Failed to load config: {e}")
 
 
 def main():

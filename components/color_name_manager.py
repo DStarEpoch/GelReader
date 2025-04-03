@@ -91,14 +91,11 @@ class ColorNameManager(QWidget):
                 self.color_widgets[idx].setText(color_name)
 
     def export_color_name_config(self):
-        path, _ = QFileDialog.getSaveFileName(self, "Save Color Config", "", "Text Files (*.txt)")
-        if path:
-            with open(path, 'w') as file:
-                for idx, name in self.color_names.items():
-                    file.write(f"{idx}: {name}\n")
-            QMessageBox.information(self, "Success", "Color configuration exported successfully.")
+        return {"color_names": {k: v for k,v in self.color_names.items()}}
 
-    def load_color_name_config(self, color_name_dict: dict):
-        self.color_names.update(color_name_dict)
-        self.update_color_names([])
-
+    def load_color_name_config(self, config_dict: dict):
+        self.color_names.update(config_dict['color_names'])
+        for idx, color_name in self.color_names.items():
+            color_widget = self.color_widgets.get(idx)
+            if color_widget:
+                self.color_widgets[idx].setText(color_name)

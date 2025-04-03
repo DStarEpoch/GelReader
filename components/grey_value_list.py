@@ -85,14 +85,3 @@ class GreyValueList(QWidget):
     def on_add(self):
         if self.add_cb:
             self.add_cb(self.group_idx)
-        # last_idx = len(self.labels)
-        # rgba = CONTOUR_COLOR_LIST[last_idx % len(CONTOUR_COLOR_LIST)]
-        # color = QColor(rgba[0], rgba[1], rgba[2], rgba[3])
-        # label = QLabel("0", self)
-        # label.setStyleSheet(f"color: rgb({color.red()}, {color.green()}, {color.blue()});")
-        # self.labels.append(label)
-        # button = QPushButton(self)
-        # button.setIcon(QIcon('assets/delete.png'))
-        # button.clicked.connect(partial(self.on_delete, last_idx))
-        # self.buttons.append(button)
-        # self.refresh_labels_and_buttons()

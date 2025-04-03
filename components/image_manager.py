@@ -4,6 +4,8 @@
 # @Author : yuyeqing
 # @File   : image_manager.py
 # @IDE    : PyCharm
+from functools import partial
+
 import cv2
 import numpy as np
 from PyQt6.QtCore import Qt
@@ -11,6 +13,7 @@ from PyQt6.QtGui import QPixmap, QImage
 from PyQt6.QtWidgets import QWidget, QLabel, QMessageBox, QVBoxLayout, QSizePolicy
 from components.contour_widget import ContourWidget
 from components.grey_value_list import GreyValueList
+from components.group_name_widget import GroupNameWidget
 
 
 class ImageManager(QWidget):
@@ -34,12 +37,38 @@ class ImageManager(QWidget):
         # 记录绘制contours obj
         self.contour_objs: dict[tuple[int, int], ContourWidget] = dict()
 
+        # 记录组名 obj
+        self._group_names = dict()
+        self.group_name_objs: dict[int, GroupNameWidget] = dict()
+
         # 记录灰度值列表 obj
         self.grey_value_list_objs: dict[int, GreyValueList] = dict()
         self._background_threshold = 0
 
         self.scale_factor = 1.0
         self.offset = (0, 0)
+
+    @property
+    def group_names(self):
+        return self._group_names
+
+    def on_set_group_name(self, group_idx, name):
+        self._group_names[group_idx] = name
+
+    def clean_data(self):
+        # 清空所有现有数据
+        self._group_names.clear()
+        for _, contour in self.contour_objs.items():
+            contour.deleteLater()
+        self.contour_objs.clear()
+        for _, grey_value_list in self.grey_value_list_objs.items():
+            grey_value_list.deleteLater()
+        self.grey_value_list_objs.clear()
+        for _, group_name in self.group_name_objs.items():
+            group_name.deleteLater()
+        self.group_name_objs.clear()
+        self.image_label.clear()
+        self.results.clear()
 
     def load_image(self, image_path):
         if not image_path:
@@ -56,6 +85,7 @@ class ImageManager(QWidget):
             self.original_image = None
             self.gray = None
             return
+        self.clean_data()
         print(f"Image loaded successfully. Shape: {self.original_image.shape}, "
               f"background threshold: {self._background_threshold}")
         self._resize_image_label()
@@ -156,6 +186,7 @@ class ImageManager(QWidget):
                 contour.position = (win_x, win_y)
                 self.contour_objs[contour_tag] = contour
                 contour.show()
+        self.init_group_names()
         self.init_grey_value_list()
     
     def contour_changed(self, contour_tag):
@@ -209,11 +240,30 @@ class ImageManager(QWidget):
             if group_info is not None:
                 break
         else:
-            self.results[group_idx] = []  # Remove empty group
-            grey_value_list = self.grey_value_list_objs.get(group_idx)
-            if grey_value_list:
-                grey_value_list.deleteLater()
-                self.grey_value_list_objs.pop(group_idx)
+            self.on_group_delete(group_idx)
+            return
+            # self.results[group_idx] = []  # Remove empty group
+            # grey_value_list = self.grey_value_list_objs.get(group_idx)
+            # if grey_value_list:
+            #     grey_value_list.deleteLater()
+            #     self.grey_value_list_objs.pop(group_idx)
+        self._refresh_grey_value_list()
+        self.contour_changed_cb and self.contour_changed_cb(self.results)
+
+    def on_group_delete(self, group_idx: int):
+        grey_value_list = self.grey_value_list_objs.get(group_idx)
+        if grey_value_list:
+            grey_value_list.deleteLater()
+            self.grey_value_list_objs.pop(group_idx)
+        group_name = self.group_name_objs.get(group_idx)
+        if group_name:
+            group_name.deleteLater()
+            self.group_name_objs.pop(group_idx)
+        self.results[group_idx] = []
+        for contour_tag in list(self.contour_objs.keys()):
+            if contour_tag[0] == group_idx:
+                contour = self.contour_objs.pop(contour_tag)
+                contour.deleteLater()
         self._refresh_grey_value_list()
         self.contour_changed_cb and self.contour_changed_cb(self.results)
 
@@ -222,7 +272,6 @@ class ImageManager(QWidget):
         for group_idx in list(self.grey_value_list_objs.keys()):
             self.grey_value_list_objs[group_idx].deleteLater()
         self.grey_value_list_objs.clear()
-
         # 创建新的灰度值列表
         for group_idx, group in enumerate(self.results):
             if not group:
@@ -231,6 +280,24 @@ class ImageManager(QWidget):
             grey_value_list.update_values(group)
             grey_value_list.show()
             self.grey_value_list_objs[group_idx] = grey_value_list
+
+    def init_group_names(self):
+        # 清空旧的组名
+        for group_idx in list(self.group_name_objs.keys()):
+            self.group_name_objs[group_idx].deleteLater()
+        self.group_name_objs.clear()
+        # 创建新的组名
+        for group_idx, group in enumerate(self.results):
+            if not group:
+                continue
+            group_name = GroupNameWidget(self, group_idx, delete_cb=self.on_group_delete,
+                                         set_name_cb=self.on_set_group_name)
+            group_name.show()
+            if group_idx in self._group_names:
+                group_name.name = self._group_names[group_idx]
+            else:
+                self._group_names[group_idx] = group_name.name
+            self.group_name_objs[group_idx] = group_name
 
     def _refresh_grey_value_list(self):
         for group_idx, group in enumerate(self.results):
@@ -252,6 +319,29 @@ class ImageManager(QWidget):
                     grey_value_list.move(lower_x,
                                          self.offset[1] + int(self.original_image.shape[0] * self.scale_factor))
 
+    def _refresh_group_names(self):
+        for group_idx, group in enumerate(self.results):
+            group_name = self.group_name_objs.get(group_idx)
+            if not group_name:
+                continue
+            # 将组名放置在相应轮廓对象的正上方, 与图片顶部平齐
+            if not group:
+                continue
+            # 获取轮廓左侧坐标
+            lower_x = None
+            width = 50
+            for contour_idx in range(len(group)):
+                contour_tag = (group_idx, contour_idx)
+                contour = self.contour_objs.get(contour_tag)
+                if not contour:
+                    continue
+                if lower_x is None or contour.position.x() < lower_x:
+                    lower_x = contour.position.x()
+                width = max(width, contour.width() + contour.position.x() - lower_x)
+            if lower_x is not None:
+                group_name.resize(width, 20)
+                group_name.move(lower_x, self.offset[1] - group_name.height())
+
     def _resize_image_label(self):
         if self.original_image is None:
             return
@@ -267,6 +357,7 @@ class ImageManager(QWidget):
         self.image_label.resize(scaled_width, scaled_height)
         self.update_position()
         self._refresh_grey_value_list()
+        self._refresh_group_names()
     
     def update_position(self):
         """根据比例值调整图片的位置"""
